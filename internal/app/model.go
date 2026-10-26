@@ -50,11 +50,12 @@ type Model struct {
 
 	p *mpv.Player
 
-	repeatOne bool
-	repeatAll bool
-	shuffle   bool
-	visited   map[int]bool
-	history   []int // для prev в режиме shuffle
+	repeatOne  bool
+	repeatAll  bool
+	shuffle    bool
+	visited    map[int]bool
+	history    []int // для prev в режиме shuffle
+	failStreak int   // подряд неудачных треков (для auto-skip)
 
 	volume int
 
@@ -78,6 +79,7 @@ func New(cfg config.Config, cliCookies string) Model {
 		cliCookies: cliCookies,
 		visited:    map[int]bool{},
 		volume:     c.Volume,
+		history:    []int{},
 	}
 	m.list = list.New(nil, delegate{}, 60, 10)
 	m.list.SetShowStatusBar(false)
@@ -94,6 +96,12 @@ func New(cfg config.Config, cliCookies string) Model {
 		m.input.Focus() // Init runs on a value copy, so focus here
 	} else {
 		m.fetching = true
+	}
+	// если пользователь явно указал cookies, но файла нет — предупредим сразу
+	if explicit := m.cfg.Cookies; explicit != "" || cliCookies != "" {
+		if config.ResolveCookies(c, cliCookies) == "" {
+			m.toast = toast{msg: "cookies file not found — playing without it", bad: true, id: 1}
+		}
 	}
 	return m
 }
@@ -128,12 +136,20 @@ type tickMsg struct{}
 
 type toastMsg struct{ id int }
 
+type skipMsg struct{}
+
 func (m Model) cookies() string { return config.ResolveCookies(m.cfg, m.cliCookies) }
 
 func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		startMPVCmd(m.cookies(), m.volume),
 		tick(),
+	}
+	if m.toast.msg != "" {
+		id := m.toast.id
+		cmds = append(cmds, tea.Tick(4*time.Second, func(time.Time) tea.Msg {
+			return toastMsg{id: id}
+		}))
 	}
 	if m.inputOn {
 		cmds = append(cmds, textinput.Blink)
@@ -218,11 +234,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case evMsg:
 		switch msg.kind {
 		case mpv.EOF:
+			m.failStreak = 0
 			return m, m.autoAdvance()
 		case mpv.ErrorKind:
+			m.failStreak++
 			m.notify("playback: "+msg.err, true)
-			return m, tick()
+			if m.failStreak >= len(m.tracks) {
+				m.notify(fmt.Sprintf("stopping: %d tracks failed in a row", m.failStreak), true)
+				m.failStreak = 0
+				return m, tick()
+			}
+			return m, tea.Tick(1200*time.Millisecond, func(time.Time) tea.Msg { return skipMsg{} })
 		}
+
+	case skipMsg:
+		if m.p == nil || len(m.tracks) == 0 { //nolint:errcheck
+			return m, nil
+		}
+		return m, m.loadTrack(m.nextPlaybackIndex(), true)
 
 	case tickMsg:
 		return m, tea.Batch(tick(), m.syncProgress())
@@ -455,6 +484,20 @@ func (m *Model) pickRandomNext() (int, bool) {
 	return cands[rand.Intn(len(cands))], true
 }
 
+// nextPlaybackIndex is where the queue should jump if the current track dies.
+func (m *Model) nextPlaybackIndex() int {
+	if m.shuffle {
+		if i, ok := m.pickRandomNext(); ok {
+			return i
+		}
+		m.visited = map[int]bool{m.cur: true}
+		if i, ok := m.pickRandomNext(); ok {
+			return i
+		}
+	}
+	return (m.cur + 1) % len(m.tracks)
+}
+
 func (m *Model) finishQueue() tea.Cmd {
 	m.ended = true
 	m.refreshItems()
@@ -466,6 +509,7 @@ func (m *Model) manualNext() tea.Cmd {
 	if m.p == nil || len(m.tracks) == 0 {
 		return nil
 	}
+	m.failStreak = 0
 	if m.shuffle {
 		// случайный следующий — сначала из непроигранных
 		if i, ok := m.pickRandomNext(); ok {
@@ -489,6 +533,7 @@ func (m *Model) manualPrev() tea.Cmd {
 	if m.p == nil || len(m.tracks) == 0 {
 		return nil
 	}
+	m.failStreak = 0
 	if m.shuffle {
 		// вернуться к прошлому проигранному по истории
 		if n := len(m.history); n > 0 {

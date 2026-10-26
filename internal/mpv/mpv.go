@@ -97,7 +97,7 @@ func Start(cookiesFile string, volume int) (*Player, error) {
 		fmt.Sprintf("--volume=%d", clamp(volume, 0, 100)),
 	}
 	if cookiesFile != "" {
-		args = append(args, "--ytdl-raw-options=cookies-file="+cookiesFile)
+		args = append(args, "--ytdl-raw-options=cookies="+cookiesFile) // yt-dlp: --cookies FILE
 	}
 
 	proc := exec.Command("mpv", args...)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	toml "github.com/BurntSushi/toml"
 )
@@ -62,14 +63,27 @@ func Save(c Config) error {
 	return toml.NewEncoder(f).Encode(c)
 }
 
-// ResolveCookies picks the cookies file: CLI flag beats config beats the
-// conventional ~/.config/ytmg/cookies.txt if it exists.
-func ResolveCookies(c Config, cliPath string) string {
-	if cliPath != "" {
-		return cliPath
+// expandPath turns a leading ~ into the home directory.
+func expandPath(p string) string {
+	if strings.HasPrefix(p, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[1:])
+		}
 	}
-	if c.Cookies != "" {
-		return c.Cookies
+	return p
+}
+
+// ResolveCookies picks the cookies file: CLI flag beats config beats the
+// conventional ~/.config/ytmg/cookies.txt if it exists. Paths that do not
+// exist are skipped — a broken cookie file must not poison playback.
+func ResolveCookies(c Config, cliPath string) string {
+	for _, p := range []string{expandPath(cliPath), expandPath(c.Cookies)} {
+		if p == "" {
+			continue
+		}
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
 	}
 	p := filepath.Join(Dir(), "cookies.txt")
 	if st, err := os.Stat(p); err == nil && !st.IsDir() {

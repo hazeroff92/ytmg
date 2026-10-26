@@ -32,6 +32,12 @@ volume   = 85
 ```
 
 `--cookies` (CLI) beats `cookies` (config) beats `~/.config/ytmg/cookies.txt`.
+`~` in the config path is expanded. A missing/invalid cookie file is ignored
+with a warning instead of breaking playback.
+
+Note: since late 2026 yt-dlp needs a JavaScript runtime (e.g. `deno`) plus a
+challenge solver for cookie-based YouTube extraction — see the EJS wiki:
+https://github.com/yt-dlp/yt-dlp/wiki/EJS
 
 ## Keys
 
@@ -50,7 +56,8 @@ volume   = 85
 | ↑/↓            | move in queue             |
 | `q`            | quit (kills mpv)          |
 
-EOF/no-repeat ends the queue; `n` always wraps manually.
+EOF, no-repeat ends the queue; `n` always wraps manually. Broken or unavailable
+tracks are skipped automatically (toast shows the reason).
 
 ## Layout
 
