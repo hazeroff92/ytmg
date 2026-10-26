@@ -90,6 +90,9 @@ func New(cfg config.Config, cliCookies string) Model {
 	if m.cfg.Playlist == "" {
 		m.input = newInput()
 		m.inputOn = true
+		m.input.Focus() // Init runs on a value copy, so focus here
+	} else {
+		m.fetching = true
 	}
 	return m
 }
@@ -132,10 +135,8 @@ func (m Model) Init() tea.Cmd {
 		tick(),
 	}
 	if m.inputOn {
-		m.input.Focus()
 		cmds = append(cmds, textinput.Blink)
 	} else {
-		m.fetching = true
 		cmds = append(cmds, fetchCmd(m.cfg.Playlist, m.cookies()))
 	}
 	return tea.Batch(cmds...)
