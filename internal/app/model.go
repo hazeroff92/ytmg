@@ -232,23 +232,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case evMsg:
+		// подписка одноразовая: после каждого события заново вешаем слушателя
 		switch msg.kind {
 		case mpv.EOF:
 			m.failStreak = 0
-			return m, m.autoAdvance()
+			if m.p == nil {
+				return m, tick()
+			}
+			return m, tea.Batch(m.autoAdvance(), waitEvent(m.p))
 		case mpv.ErrorKind:
 			m.failStreak++
 			m.notify("playback: "+msg.err, true)
 			if m.failStreak >= len(m.tracks) {
 				m.notify(fmt.Sprintf("stopping: %d tracks failed in a row", m.failStreak), true)
 				m.failStreak = 0
-				return m, tick()
+				return m, tea.Batch(tick(), waitEvent(m.p))
 			}
-			return m, tea.Tick(1200*time.Millisecond, func(time.Time) tea.Msg { return skipMsg{} })
+			return m, tea.Batch(
+				tea.Tick(1200*time.Millisecond, func(time.Time) tea.Msg { return skipMsg{} }),
+				waitEvent(m.p),
+			)
 		}
 
 	case skipMsg:
-		if m.p == nil || len(m.tracks) == 0 { //nolint:errcheck
+		if m.p == nil || len(m.tracks) == 0 {
 			return m, nil
 		}
 		return m, m.loadTrack(m.nextPlaybackIndex(), true)
