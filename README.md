@@ -38,7 +38,9 @@ volume   = 85
 | Key            | Action                    |
 |----------------|---------------------------|
 | `space`        | pause / play              |
-| `n` / `p`      | next / prev (`p >3s` restarts) |
+| `n`/`j` / `p`/`k` | next / prev (`p >3s` restarts) |
+| `S` on `next` | random unplayed track |
+| `S` on `prev` | return to previously played (history stack) |
 | `F`            | repeat one (single track loop) |
 | `R`            | repeat all (queue loop)   |
 | `S`            | shuffle mode (random next, no consecutive repeats) |

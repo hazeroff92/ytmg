@@ -236,7 +236,7 @@ func (m Model) statusLine(w int) string {
 }
 
 func (m Model) helpLine(w int) string {
-	help := "q quit · space pause · n next p prev · F repeat-one · R repeat-all · S shuffle · ← → seek ±10s · ± vol · o url"
+	help := "q quit · space pause · j/k next/prev (+ n/p) · F repeat-one · R repeat-all · S shuffle · ← → seek ±10s · ± vol · o url"
 	return dimStyle.Render(truncate(help, w))
 }
 

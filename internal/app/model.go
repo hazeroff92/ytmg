@@ -54,6 +54,7 @@ type Model struct {
 	repeatAll bool
 	shuffle   bool
 	visited   map[int]bool
+	history   []int // для prev в режиме shuffle
 
 	volume int
 
@@ -285,9 +286,9 @@ func (m *Model) updateKeys(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.bgCall(func() error { return m.p.TogglePause() })
 
-	case "n":
+	case "n", "j":
 		return m, m.manualNext()
-	case "p":
+	case "p", "k":
 		return m, m.manualPrev()
 
 	case "F":
@@ -377,12 +378,16 @@ func (m *Model) tryStart() tea.Cmd {
 		return nil
 	}
 	m.started = true
-	return m.loadTrack(0)
+	return m.loadTrack(0, false)
 }
 
-func (m *Model) loadTrack(i int) tea.Cmd {
+// loadTrack starts track i; push=true records the current track in history.
+func (m *Model) loadTrack(i int, push bool) tea.Cmd {
 	if m.p == nil || len(m.tracks) == 0 {
 		return nil
+	}
+	if push {
+		m.history = append(m.history, m.cur)
 	}
 	m.cur = i
 	m.ended = false
@@ -413,23 +418,23 @@ func (m *Model) autoAdvance() tea.Cmd {
 
 	if m.shuffle {
 		if i, ok := m.pickRandomNext(); ok {
-			return m.loadTrack(i)
+			return m.loadTrack(i, true)
 		}
 		if m.repeatAll {
 			cur := m.cur
 			m.visited = map[int]bool{cur: true}
 			if i, ok := m.pickRandomNext(); ok {
-				return m.loadTrack(i)
+				return m.loadTrack(i, true)
 			}
 		}
 		return m.finishQueue()
 	}
 
 	if next := m.cur + 1; next < len(m.tracks) {
-		return m.loadTrack(next)
+		return m.loadTrack(next, true)
 	}
 	if m.repeatAll {
-		return m.loadTrack(0)
+		return m.loadTrack(0, true)
 	}
 	return m.finishQueue()
 }
@@ -461,17 +466,43 @@ func (m *Model) manualNext() tea.Cmd {
 	if m.p == nil || len(m.tracks) == 0 {
 		return nil
 	}
-	return m.loadTrack((m.cur + 1) % len(m.tracks))
+	if m.shuffle {
+		// случайный следующий — сначала из непроигранных
+		if i, ok := m.pickRandomNext(); ok {
+			return m.loadTrack(i, true)
+		}
+		// всё проиграно: пользовательская клавиша — начинаем новый круг
+		m.visited = map[int]bool{}
+		m.visited[m.cur] = true
+		if len(m.tracks) == 1 {
+			return m.loadTrack(0, false)
+		}
+		if i, ok := m.pickRandomNext(); ok {
+			return m.loadTrack(i, true)
+		}
+		return m.loadTrack((m.cur+1)%len(m.tracks), true)
+	}
+	return m.loadTrack((m.cur+1)%len(m.tracks), true)
 }
 
 func (m *Model) manualPrev() tea.Cmd {
 	if m.p == nil || len(m.tracks) == 0 {
 		return nil
 	}
-	if m.p.Status().TimePos > 3.0 {
+	if m.shuffle {
+		// вернуться к прошлому проигранному по истории
+		if n := len(m.history); n > 0 {
+			i := m.history[n-1]
+			m.history = m.history[:n-1]
+			return m.loadTrack(i, false)
+		}
+		// история пуста — предыдущий по порядку, не приближая конец круга
+		return m.loadTrack((m.cur-1+len(m.tracks))%len(m.tracks), false)
+	}
+	if st := m.p.Status(); st.TimePos > 3.0 {
 		return m.bgCall(func() error { return m.p.Restart() })
 	}
-	return m.loadTrack((m.cur - 1 + len(m.tracks)) % len(m.tracks))
+	return m.loadTrack((m.cur-1+len(m.tracks))%len(m.tracks), true)
 }
 
 // syncProgress pushes the progress bar forward (and keeps ticking).
