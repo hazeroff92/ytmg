@@ -1,3 +1,7 @@
+# DISCLAIMER
+
+Я это навайбкодил.
+
 # ytmg
 
 A minimal YouTube Music player for the terminal: **Go + bubbletea + yt-dlp + mpv (IPC)**.
